@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>⌘V 按累了，我给自己写了个剪贴板工具 · pasteCat</title>
+<meta name="description" content="剪贴板管理是 macOS 上很拥挤的一条赛道，但我还是写了一个。说说 pasteCat 的设计取舍，以及那个我最离不开的功能。">
+<meta property="og:title" content="⌘V 按累了，我给自己写了个剪贴板工具">
+<meta property="og:description" content="说说 pasteCat 的设计取舍，以及那个我最离不开的功能。">
+<meta property="og:image" content="../assets/icon.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="../assets/icon.png">
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-soft: #f5f5f7;
+    --fg: #1d1d1f;
+    --fg-soft: #6e6e73;
+    --fg-faint: #86868b;
+    --border: rgba(0, 0, 0, .10);
+    --border-strong: rgba(0, 0, 0, .18);
+    --accent: #0a84ff;
+    --accent-soft: rgba(10, 132, 255, .08);
+    --code-bg: #f6f8fa;
+    --code-fg: #24292f;
+    --quote-bg: #f5f5f7;
+    --shadow-s: 0 1px 2px rgba(0, 0, 0, .06);
+    --shadow-m: 0 2px 6px rgba(0, 0, 0, .06), 0 12px 32px rgba(0, 0, 0, .07);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000;
+      --bg-soft: #0a0a0b;
+      --fg: #f5f5f7;
+      --fg-soft: #a1a1a6;
+      --fg-faint: #86868b;
+      --border: rgba(255, 255, 255, .12);
+      --border-strong: rgba(255, 255, 255, .22);
+      --accent: #0a84ff;
+      --accent-soft: rgba(10, 132, 255, .14);
+      --code-bg: #101014;
+      --code-fg: #e6edf3;
+      --quote-bg: #141416;
+      --shadow-s: 0 1px 2px rgba(0, 0, 0, .5);
+      --shadow-m: 0 2px 6px rgba(0, 0, 0, .5), 0 12px 32px rgba(0, 0, 0, .4);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC",
+                 "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 17px;
+    line-height: 1.9;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ---------- 顶部导航 ---------- */
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    background: var(--bg);
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    border-bottom: 1px solid var(--border);
+  }
+
+  nav .navwrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 22px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+  }
+
+  nav img { width: 24px; height: 24px; border-radius: 6px; }
+  nav .brand { font-weight: 600; font-size: 15px; }
+  nav .spacer { flex: 1; }
+
+  nav .navlink {
+    font-size: 14px;
+    color: var(--fg-soft);
+    padding: 6px 10px;
+    border-radius: 8px;
+    transition: color .15s ease, background .15s ease;
+  }
+
+  nav .navlink:hover { color: var(--fg); background: var(--accent-soft); text-decoration: none; }
+
+  /* ---------- 文章 ---------- */
+  article {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 52px 22px 40px;
+  }
+
+  .meta-top {
+    font-size: 13.5px;
+    color: var(--fg-faint);
+    margin-bottom: 14px;
+  }
+
+  h1 {
+    font-size: clamp(27px, 5vw, 38px);
+    line-height: 1.32;
+    letter-spacing: -.022em;
+    font-weight: 700;
+    margin: 0 0 20px;
+  }
+
+  .lede {
+    font-size: 18.5px;
+    line-height: 1.85;
+    color: var(--fg);
+    padding-left: 16px;
+    border-left: 3px solid var(--accent);
+    margin: 0 0 40px;
+  }
+
+  h2 {
+    font-size: clamp(21px, 3.4vw, 26px);
+    line-height: 1.4;
+    letter-spacing: -.014em;
+    font-weight: 680;
+    margin: 54px 0 18px;
+    padding-top: 6px;
+  }
+
+  h3 {
+    font-size: 19.5px;
+    line-height: 1.45;
+    letter-spacing: -.01em;
+    font-weight: 650;
+    margin: 40px 0 14px;
+  }
+
+  p { margin: 0 0 22px; }
+
+  strong { font-weight: 650; }
+
+  ul, ol { margin: 0 0 22px; padding-left: 26px; }
+  li { margin-bottom: 9px; }
+  li::marker { color: var(--fg-faint); }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 15px;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 2.5px 6px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+  }
+
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 15px 17px;
+    overflow-x: auto;
+    margin: 0 0 24px;
+  }
+
+  pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 14.5px;
+    line-height: 1.7;
+  }
+
+  blockquote {
+    margin: 0 0 24px;
+    padding: 14px 18px;
+    background: var(--quote-bg);
+    border-left: 3px solid var(--border-strong);
+    border-radius: 0 10px 10px 0;
+    color: var(--fg-soft);
+    font-size: 16.5px;
+  }
+
+  blockquote p:last-child { margin-bottom: 0; }
+
+  hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 44px 0;
+  }
+
+  /* ---------- 图 ---------- */
+  figure { margin: 30px 0 34px; }
+
+  figure img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-m);
+  }
+
+  figcaption {
+    margin-top: 11px;
+    font-size: 14px;
+    color: var(--fg-faint);
+    text-align: center;
+    line-height: 1.7;
+  }
+
+  /* ---------- 底部 CTA ---------- */
+  .cta-box {
+    margin: 52px 0 0;
+    padding: 28px 26px;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    text-align: center;
+  }
+
+  .cta-box h3 { margin: 0 0 8px; font-size: 19px; }
+
+  .cta-box p { color: var(--fg-soft); font-size: 15px; margin: 0 0 20px; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 26px;
+    border-radius: 980px;
+    font-size: 15.5px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(140deg, #0a84ff, #5e5ce6);
+    box-shadow: 0 6px 20px rgba(10, 132, 255, .3);
+    transition: box-shadow .2s ease, transform .15s ease;
+  }
+
+  .btn:hover { box-shadow: 0 10px 28px rgba(10, 132, 255, .42); text-decoration: none; }
+  .btn:active { transform: scale(.975); }
+
+  .author-note {
+    margin-top: 30px;
+    padding-top: 22px;
+    border-top: 1px solid var(--border);
+    font-size: 14px;
+    color: var(--fg-faint);
+  }
+
+  footer {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 30px 22px 56px;
+    font-size: 13.5px;
+    color: var(--fg-faint);
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+
+  @media (max-width: 560px) {
+    article { padding-top: 36px; }
+    body { font-size: 16.5px; }
+    .lede { font-size: 17.5px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="navwrap">
+    <img src="../assets/icon.png" alt="pasteCat">
+    <span class="brand">pasteCat</span>
+    <span class="spacer"></span>
+    <a class="navlink" href="../">首页</a>
+    <a class="navlink" data-repo-link="" href="../">GitHub</a>
+  </div>
+</nav>
+
+<article>
+
+  <div class="meta-top">开发者手记 · 2026 年 9 月</div>
+
+  <h1>⌘V 按累了，我给自己写了个剪贴板工具</h1>
+
+  <p class="lede">
+    剪贴板管理是 macOS 上相当拥挤的一条赛道。Paste、PasteNow、Maccy…… 每一个都比我成熟得多。
+    但我还是写了一个，因为在日常使用中，有件事我一直想要，却没能在现成工具里得到。
+  </p>
+
+  <h2>先做个小测试：过去一小时，你按了多少次 ⌘V？</h2>
+
+  <p>我没数过。但我知道每次都是这个流程——复制、切窗口、粘贴、复制、再切、再贴。三次还行，五次开始烦躁，十次以后只想把键盘放平。</p>
+
+  <p>比如填一张表单：姓名在聊天记录里，电话在备忘录里，地址在邮件里。于是：点开聊天 → 复制 → 切回表单 → 粘贴 → 点开备忘录 → 复制 → 切回来 → 粘贴……</p>
+
+  <p>不难，就是烦。</p>
+
+  <p>所以我给自己写了个小工具，叫 <strong>pasteCat</strong>。装上以后菜单栏多一只小猫，按 <code>⇧⌘V</code> 就能把最近复制过的内容捞回来。</p>
+
+  <!-- 配图位置 1：面板主界面（截图待补） -->
+
+  <h3>最爽的一点：选中，就已经粘好了</h3>
+
+  <p>大多数剪贴板工具的流程是：选中内容 → 内容进剪贴板 → 你还得自己按一下 ⌘V。</p>
+
+  <p>pasteCat 省掉了最后那一步。在面板里点中哪一条，它就把你送回刚才那个窗口，顺便把内容贴好。整个过程你只做了一个动作：点。</p>
+
+  <!-- 配图位置 2：点选后自动粘贴回原应用（截图待补） -->
+
+  <p>它需要一次「辅助功能」权限授权——因为模拟按键在 macOS 眼里属于敏感操作。第一次用的时候它会自己弹窗引导，跟着点就行。不授权也能用，只是会退化成「我帮你复制好了，你自己按 ⌘V」。</p>
+
+  <h3>第二爽的：按住 ⌘，一口气选五条</h3>
+
+  <p>这是我离不开它的真正原因。</p>
+
+  <p>唤起面板，<strong>按住 ⌘ 别松</strong>，用鼠标一条一条点选，选完<strong>松开 ⌘</strong>。然后 pasteCat 会把你点过的内容按顺序拼成一段，一次贴出去。</p>
+
+  <figure>
+    <img src="../assets/pastecat-demo.gif"
+         alt="按住 ⌘ 多选三项参数，松开后合并粘贴进备忘录">
+    <figcaption>按住 ⌘ 依次点选三条内容，松开 ⌘ 即合并粘贴——整个过程不到两秒</figcaption>
+  </figure>
+
+  <p>我拿它干过这些事：</p>
+
+  <ul>
+    <li>从三个聊天窗口里各挑一段，拼成一条完整通知发出去</li>
+    <li>把散落在文档各处的句子选出来，凑成一段笔记</li>
+    <li>收集一堆零散的命令片段，合成一条能直接跑的命令</li>
+  </ul>
+
+  <p>比起「复制 → 粘贴 → 复制 → 粘贴」循环五遍，这个体验大概就像从走楼梯换成坐电梯。</p>
+
+  <p>小细节：多选的时候如果按了别的组合键，这一轮粘贴会作废，避免手滑把不该贴的东西贴出去（这个我踩过坑，所以专门做了处理）。</p>
+
+  <h3>它不联网，而且你可以自己验证</h3>
+
+  <p>pasteCat 里没有任何网络代码。没有账号，没有统计，没有遥测。</p>
+
+  <p>数据就在本地：</p>
+
+  <pre><code>~/Library/Application Support/pasteCat/</code></pre>
+
+  <p>不用信我说的。打开活动监视器看看它的网络流量，或者用防火墙掐掉它的所有连接——功能不会有任何变化，因为它本来就不需要网络。</p>
+
+  <p>它还带一个「排除规则」，把密码管理器加进去，从那些应用里复制的东西就不会被记录。</p>
+
+  <!-- 配图位置 4：设置里的排除规则（截图待补） -->
+
+  <h3>装之前，有三件事你得先知道</h3>
+
+  <p><strong>1. 首次打开会被系统拦一下。</strong></p>
+
+  <p>这个应用没有经过 Apple 公证（那要每年 99 美元）。所以第一次打开时系统会说「无法验证开发者」。解决办法任选：</p>
+
+  <ul>
+    <li>在「应用程序」里<strong>按住 Control 点它</strong> → 选「打开」</li>
+    <li>或者打开「系统设置 → 隐私与安全性」，<strong>拉到页面最底部</strong>，点「仍要打开」</li>
+    <li>万一提示「已损坏」，终端跑一行 <code>xattr -dr com.apple.quarantine /Applications/pasteCat.app</code></li>
+  </ul>
+
+  <p><strong>2. 这一版的剪贴板历史只保留 6 条。</strong></p>
+
+  <p>对，就是 6 条。免费版的设定，超了会自动清掉最旧的（置顶的会留着）。</p>
+
+  <p>我不想让你装完才发现这件事，所以写在最前面。如果你需要几百条历史，这一版暂时伺候不了。</p>
+
+  <p><strong>3. 需要 macOS 13 或更新版本。</strong></p>
+
+  <p>Apple 芯片和 Intel 都支持。</p>
+
+  <h3>那和别的工具比呢</h3>
+
+  <p>剪贴板工具的选择很私人，简单说几句大实话：</p>
+
+  <p>Paste、PasteNow 都比 pasteCat 成熟。同步、iPhone 端、界面精致度，它们做得更好，值得那个价钱。</p>
+
+  <p>Maccy 开源免费，也很能打。</p>
+
+  <p>pasteCat 的差异点就一个：<strong>能把多条内容合并成一段一次粘贴</strong>。这是我从头到尾最想要的功能，也是我动手写它的唯一理由。其他的都是顺带做的。</p>
+
+  <!-- 配图位置 5：三种视图切换（截图待补） -->
+
+  <h3>来试试</h3>
+
+  <p>免费，macOS 13 以上。下载 DMG，拖进「应用程序」，放行一次权限，就能用了。</p>
+
+  <p>如果哪里用着别扭，或者你想要某个功能，欢迎到 GitHub 提 Issue。我一个人开发，每一条反馈都会认真看。</p>
+
+  <h3>尾巴</h3>
+
+  <p>写这个工具最大的收获是发现了一件事：<strong>「少按一次 ⌘V」</strong>这种小到不值一提的优化，一旦习惯了就再也回不去。</p>
+
+  <p>工具这东西，有时候不在于它多能干，而在于它把某件小事做得足够顺手。</p>
+
+  <p>如果你也受够了「复制五遍、粘贴五遍」，可以试试它。</p>
+
+  <div class="cta-box">
+    <h3>pasteCat · 免费版</h3>
+    <p>macOS 13 及以上 · Apple 芯片与 Intel 通用 · 纯本地运行，零网络请求</p>
+    <a class="btn" id="download-btn" href="#">下载最新版</a>
+  </div>
+
+  <p class="author-note">本文作者是 pasteCat 的开发者。</p>
+
+</article>
+
+<footer>
+  <span>pasteCat · 纯本地 macOS 剪贴板管理器</span>
+  <span>
+    <a data-repo-link="" href="../">GitHub</a>
+    &nbsp;·&nbsp;
+    <a data-repo-link="/issues" href="../">反馈问题</a>
+  </span>
+</footer>
+
+<script>
+(function () {
+  // 在 GitHub Pages 上自动把链接指向真实仓库，本地预览时保留当前行为
+  var host = location.hostname;
+  var parts = location.pathname.split('/').filter(Boolean);
+  var onPages = /\.github\.io$/i.test(host);
+  var base = null;
+
+  if (onPages && parts.length) {
+    base = 'https://github.com/' + host.replace(/\.github\.io$/i, '') + '/' + parts[0];
+  }
+
+  document.querySelectorAll('[data-repo-link]').forEach(function (el) {
+    if (base) el.href = base + (el.getAttribute('data-repo-link') || '');
+  });
+
+  var btn = document.getElementById('download-btn');
+  if (btn) {
+    if (base) {
+      btn.href = base + '/releases/latest';
+    } else {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        alert('本地预览模式：部署到 GitHub Pages 后，此按钮会自动指向你的 Releases 页面。');
+      });
+    }
+  }
+})();
+</script>
+
+</body>
+</html>
