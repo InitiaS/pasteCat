@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<!--
+  pasteCat 宣传页 · 单文件，无外部依赖
+  ┌ 部署方式（GitHub Pages）───────────────────────────────┐
+  │ 1. 把本文件提交到仓库根目录                                │
+  │ 2. 仓库 Settings → Pages → Source: Deploy from a branch   │
+  │    → 选择 main 分支，目录选 / (root) → Save                │
+  │ 3. 稍等片刻，访问 https://你的用户名.github.io/pasteCat/    │
+  └──────────────────────────────────────────────────────┘
+  页面会自动识别仓库地址（从当前网址推断），无需手动改链接。
+-->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pasteCat — 轻量纯粹的 macOS 剪贴板管理器</title>
+<meta name="description" content="pasteCat 是一款纯本地的 macOS 剪贴板管理器：按 ⇧⌘V 唤出面板，选中内容即自动粘贴回原应用，按住 ⌘ 还能多选合并。不联网、无账号、无遥测。">
+<meta property="og:title" content="pasteCat — 轻量纯粹的 macOS 剪贴板管理器">
+<meta property="og:description" content="⇧⌘V 唤出面板，选中即自动粘贴回原应用。纯本地运行，零网络请求。">
+<meta property="og:image" content="assets/icon.png">
+<meta property="og:type" content="website">
+<link rel="icon" href="assets/icon.png">
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-soft: #f5f5f7;
+    --bg-elev: #ffffff;
+    --fg: #1d1d1f;
+    --fg-soft: #6e6e73;
+    --fg-faint: #86868b;
+    --border: rgba(0, 0, 0, .08);
+    --border-strong: rgba(0, 0, 0, .14);
+    --accent: #0a84ff;
+    --accent-2: #5e5ce6;
+    --accent-soft: rgba(10, 132, 255, .08);
+    --kbd-bg: #ffffff;
+    --kbd-border: rgba(0, 0, 0, .16);
+    --shadow-s: 0 1px 2px rgba(0, 0, 0, .06);
+    --shadow-m: 0 2px 6px rgba(0, 0, 0, .06), 0 12px 32px rgba(0, 0, 0, .07);
+    --glow: radial-gradient(60% 60% at 50% 0%, rgba(10, 132, 255, .18), transparent 70%);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000;
+      --bg-soft: #0a0a0b;
+      --bg-elev: #141416;
+      --fg: #f5f5f7;
+      --fg-soft: #a1a1a6;
+      --fg-faint: #86868b;
+      --border: rgba(255, 255, 255, .10);
+      --border-strong: rgba(255, 255, 255, .18);
+      --accent: #0a84ff;
+      --accent-2: #7d7aff;
+      --accent-soft: rgba(10, 132, 255, .14);
+      --kbd-bg: #1c1c1e;
+      --kbd-border: rgba(255, 255, 255, .22);
+      --shadow-s: 0 1px 2px rgba(0, 0, 0, .6);
+      --shadow-m: 0 2px 6px rgba(0, 0, 0, .5), 0 12px 32px rgba(0, 0, 0, .45);
+      --glow: radial-gradient(60% 60% at 50% 0%, rgba(10, 132, 255, .22), transparent 70%);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro SC", "SF Pro Text",
+                 "PingFang SC", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  a { color: inherit; text-decoration: none; }
+
+  .wrap {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* ---------- 顶部导航 ---------- */
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    background: var(--bg);                                                     /* 旧浏览器回退 */
+    background: color-mix(in srgb, var(--bg) 78%, transparent);                /* 现代浏览器 */
+    border-bottom: 1px solid var(--border);
+  }
+
+  nav .wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 56px;
+  }
+
+  nav img { width: 26px; height: 26px; border-radius: 7px; }
+
+  nav .brand { font-weight: 600; letter-spacing: -.01em; }
+
+  nav .spacer { flex: 1; }
+
+  nav .navlink {
+    font-size: 14px;
+    color: var(--fg-soft);
+    padding: 6px 10px;
+    border-radius: 8px;
+    transition: color .15s ease, background .15s ease;
+  }
+
+  nav .navlink:hover { color: var(--fg); background: var(--accent-soft); }
+
+  /* ---------- Hero ---------- */
+  header {
+    position: relative;
+    padding: 96px 0 72px;
+    text-align: center;
+    overflow: hidden;
+  }
+
+  header::before {
+    content: "";
+    position: absolute;
+    inset: -40% 0 auto 0;
+    height: 120%;
+    background: var(--glow);
+    pointer-events: none;
+  }
+
+  header .wrap { position: relative; }
+
+  .app-icon {
+    width: 132px;
+    height: 132px;
+    border-radius: 30px;
+    box-shadow: var(--shadow-m);
+    margin-bottom: 26px;
+  }
+
+  h1 {
+    font-size: clamp(34px, 5.6vw, 52px);
+    line-height: 1.12;
+    letter-spacing: -.022em;
+    font-weight: 700;
+    margin: 0 0 16px;
+  }
+
+  .tagline {
+    font-size: clamp(17px, 2.2vw, 20px);
+    color: var(--fg-soft);
+    margin: 0 auto 34px;
+    max-width: 620px;
+  }
+
+  .cta {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 13px 26px;
+    border-radius: 980px;
+    font-size: 15.5px;
+    font-weight: 600;
+    border: 1px solid transparent;
+    transition: transform .15s ease, box-shadow .2s ease, background .2s ease;
+    cursor: pointer;
+  }
+
+  .btn:active { transform: scale(.975); }
+
+  .btn-primary {
+    color: #fff;
+    background: linear-gradient(140deg, var(--accent), var(--accent-2));
+    box-shadow: 0 6px 20px rgba(10, 132, 255, .32);
+  }
+
+  .btn-primary:hover { box-shadow: 0 10px 28px rgba(10, 132, 255, .42); }
+
+  .btn-ghost {
+    background: var(--bg-elev);
+    border-color: var(--border-strong);
+    color: var(--fg);
+    box-shadow: var(--shadow-s);
+  }
+
+  .btn-ghost:hover { background: var(--bg-soft); }
+
+  .meta {
+    font-size: 13.5px;
+    color: var(--fg-faint);
+  }
+
+  .meta span + span::before {
+    content: "·";
+    margin: 0 9px;
+    color: var(--border-strong);
+  }
+
+  /* ---------- 通用区块 ---------- */
+  section { padding: 76px 0; }
+
+  section.alt { background: var(--bg-soft); }
+
+  .sec-head { text-align: center; margin-bottom: 44px; }
+
+  .sec-head h2 {
+    font-size: clamp(26px, 3.6vw, 34px);
+    letter-spacing: -.018em;
+    font-weight: 700;
+    margin: 0 0 10px;
+  }
+
+  .sec-head p {
+    margin: 0 auto;
+    max-width: 560px;
+    color: var(--fg-soft);
+    font-size: 16px;
+  }
+
+  /* ---------- 功能卡片 ---------- */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+    gap: 18px;
+  }
+
+  .card {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 26px 24px;
+    box-shadow: var(--shadow-s);
+    transition: transform .2s ease, box-shadow .25s ease, border-color .2s ease;
+  }
+
+  .card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-m);
+    border-color: var(--border-strong);
+  }
+
+  .card .ico {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    background: var(--accent-soft);
+    color: var(--accent);
+    margin-bottom: 15px;
+  }
+
+  .card .ico svg { width: 21px; height: 21px; }
+
+  .card h3 {
+    font-size: 17px;
+    font-weight: 650;
+    letter-spacing: -.01em;
+    margin: 0 0 7px;
+  }
+
+  .card p {
+    margin: 0;
+    font-size: 14.5px;
+    color: var(--fg-soft);
+    line-height: 1.62;
+  }
+
+  /* ---------- 快捷键 ---------- */
+  .keys {
+    max-width: 720px;
+    margin: 0 auto;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    overflow: hidden;
+    background: var(--bg-elev);
+    box-shadow: var(--shadow-s);
+  }
+
+  .keyrow {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 15px 22px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .keyrow:last-child { border-bottom: none; }
+
+  .keyrow .k { flex: 0 0 168px; }
+
+  .keyrow .d { color: var(--fg-soft); font-size: 14.5px; }
+
+  kbd {
+    display: inline-block;
+    min-width: 30px;
+    padding: 3px 8px;
+    margin-right: 4px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.5;
+    text-align: center;
+    color: var(--fg);
+    background: var(--kbd-bg);
+    border: 1px solid var(--kbd-border);
+    border-bottom-width: 2px;
+    border-radius: 7px;
+    box-shadow: var(--shadow-s);
+  }
+
+  /* ---------- 隐私 ---------- */
+  .privacy {
+    max-width: 780px;
+    margin: 0 auto;
+    text-align: center;
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    padding: 40px 32px;
+    background: var(--bg-elev);
+    box-shadow: var(--shadow-s);
+  }
+
+  .privacy .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 6px 14px;
+    border-radius: 980px;
+    margin-bottom: 20px;
+  }
+
+  .privacy h2 {
+    font-size: clamp(22px, 3vw, 28px);
+    letter-spacing: -.015em;
+    margin: 0 0 12px;
+  }
+
+  .privacy p {
+    color: var(--fg-soft);
+    margin: 0 auto;
+    max-width: 560px;
+    font-size: 15.5px;
+  }
+
+  .privacy code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-size: 13px;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    padding: 3px 8px;
+    border-radius: 7px;
+    display: inline-block;
+    margin-top: 16px;
+    color: var(--fg-soft);
+  }
+
+  /* ---------- 安装步骤 ---------- */
+  .steps { max-width: 720px; margin: 0 auto; }
+
+  .step {
+    display: flex;
+    gap: 18px;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .step:last-child { border-bottom: none; }
+
+  .step .num {
+    flex: 0 0 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 14px;
+    font-weight: 650;
+    color: #fff;
+    background: linear-gradient(140deg, var(--accent), var(--accent-2));
+    box-shadow: 0 3px 10px rgba(10, 132, 255, .28);
+  }
+
+  .step h3 {
+    margin: 2px 0 6px;
+    font-size: 16px;
+    font-weight: 620;
+    letter-spacing: -.01em;
+  }
+
+  .step p {
+    margin: 0 0 8px;
+    color: var(--fg-soft);
+    font-size: 14.5px;
+  }
+
+  .step p:last-child { margin-bottom: 0; }
+
+  .step code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-size: 12.5px;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    padding: 2px 7px;
+    border-radius: 6px;
+    display: inline-block;
+    margin: 4px 0 2px;
+    color: var(--fg);
+  }
+
+  .note {
+    max-width: 720px;
+    margin: 26px auto 0;
+    font-size: 13.5px;
+    color: var(--fg-faint);
+    text-align: center;
+  }
+
+  /* ---------- 页脚 ---------- */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 34px 0;
+    font-size: 13.5px;
+    color: var(--fg-faint);
+  }
+
+  footer .wrap {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+
+  footer a:hover { color: var(--accent); }
+
+  @media (max-width: 560px) {
+    header { padding: 68px 0 54px; }
+    section { padding: 56px 0; }
+    .app-icon { width: 104px; height: 104px; border-radius: 24px; }
+    .keyrow { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .keyrow .k { flex: none; }
+    .step { gap: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <img src="assets/icon.png" alt="pasteCat">
+    <span class="brand">pasteCat</span>
+    <span class="spacer"></span>
+    <a class="navlink" href="#features">功能</a>
+    <a class="navlink" href="#usage">用法</a>
+    <a class="navlink" href="#install">安装</a>
+    <a class="navlink" data-repo-link="" href="#install">GitHub</a>
+  </div>
+</nav>
+
+<header>
+  <div class="wrap">
+    <img class="app-icon" src="assets/icon.png" alt="pasteCat 应用图标">
+    <h1>复制过的东西，<br>伸手就能拿回来</h1>
+    <p class="tagline">
+      pasteCat 是一款轻量、纯粹的 macOS 剪贴板管理器。按一下快捷键唤出面板，
+      选中内容，它自动粘贴回你原来输入的位置。
+    </p>
+    <div class="cta">
+      <a class="btn btn-primary" id="download-btn" href="#install">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+             stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M5 21h14"/>
+        </svg>
+        下载免费版
+      </a>
+      <a class="btn btn-ghost" data-repo-link="" href="#features">
+        <svg viewBox="0 0 16 16" width="17" height="17" fill="currentColor" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38
+                   0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53
+                   .63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95
+                   0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0
+                   1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15
+                   0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01
+                   8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        查看开源主页
+      </a>
+    </div>
+    <p class="meta">
+      <span>macOS 13 及以上</span>
+      <span>Apple Silicon / Intel</span>
+      <span>完全免费</span>
+    </p>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>把剪贴板变成真正可用</h2>
+      <p>不只是记录历史，而是让复制粘贴这件事快上一个量级。</p>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 12h11a4 4 0 0 1 4 4v3"/><path d="M15 15l4 4 4-4" transform="translate(-5 0)"/>
+          </svg>
+        </div>
+        <h3>选中即自动粘贴</h3>
+        <p>面板关掉的瞬间，内容已经出现在你刚才的输入框里。不用再手动按 ⌘V。</p>
+      </div>
+
+      <div class="card">
+        <div class="ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="4.5" rx="1.6"/>
+            <rect x="3" y="10.5" width="13" height="4.5" rx="1.6"/>
+            <path d="M19.5 17.2v5.4M16.8 20l2.7 2.7 2.7-2.7" transform="translate(0 -4)"/>
+          </svg>
+        </div>
+        <h3>按住 ⌘ 多选合并</h3>
+        <p>按住 ⌘ 用鼠标点选多条内容，松开的一刻自动合并成一段文本，一次粘贴完成。</p>
+      </div>
+
+      <div class="card">
+        <div class="ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="7"/><path d="M20.5 20.5 16 16"/>
+          </svg>
+        </div>
+        <h3>秒级搜索</h3>
+        <p>记不清哪天复制的，只记得几个字。输入关键词，历史立刻筛出来。</p>
+      </div>
+
+      <div class="card">
+        <div class="ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7.5" height="7.5" rx="2"/>
+            <rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/>
+            <rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/>
+            <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/>
+          </svg>
+        </div>
+        <h3>三种视图</h3>
+        <p>卡片、紧凑、列表随意切换。文本、链接、颜色、图片、文件都有对应的展示方式。</p>
+      </div>
+
+      <div class="card">
+        <div class="ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l7.5 3.2v5.4c0 4.6-3.1 7.9-7.5 9.4-4.4-1.5-7.5-4.8-7.5-9.4V6.2L12 3z"/>
+            <path d="M9.2 12.2l2 2 3.6-3.9"/>
+          </svg>
+        </div>
+        <h3>隐私排除</h3>
+        <p>把密码管理器等应用加入排除列表，它们复制的内容永远不会被记录。</p>
+      </div>
+
+      <div class="card">
+        <div class="ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9.5 4.5h5l-.6 5.2 3.1 3.1v1.4H7v-1.4l3.1-3.1-.6-5.2z"/>
+            <path d="M12 14.2V21"/>
+          </svg>
+        </div>
+        <h3>置顶保留</h3>
+        <p>常用内容钉在顶部，清理历史时也会优先保留，随手就能再复制一次。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="usage" class="alt">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>上手只需要记住一个键</h2>
+      <p>其余操作都顺着直觉走。</p>
+    </div>
+
+    <div class="keys">
+      <div class="keyrow">
+        <div class="k"><kbd>⇧</kbd><kbd>⌘</kbd><kbd>V</kbd></div>
+        <div class="d">唤出 / 隐藏剪贴板面板（可在设置里改成你习惯的组合）</div>
+      </div>
+      <div class="keyrow">
+        <div class="k"><kbd>↑</kbd><kbd>↓</kbd></div>
+        <div class="d">在历史中移动选择</div>
+      </div>
+      <div class="keyrow">
+        <div class="k"><kbd>↵</kbd></div>
+        <div class="d">粘贴当前选中项并关闭面板</div>
+      </div>
+      <div class="keyrow">
+        <div class="k"><kbd>Esc</kbd></div>
+        <div class="d">关闭面板，不做任何粘贴</div>
+      </div>
+      <div class="keyrow">
+        <div class="k"><kbd>⌘</kbd> + 鼠标点选</div>
+        <div class="d">多选，松开 ⌘ 时合并粘贴</div>
+      </div>
+      <div class="keyrow">
+        <div class="k">直接点击条目</div>
+        <div class="d">立即粘贴该条内容</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="privacy">
+  <div class="wrap">
+    <div class="privacy">
+      <div class="badge">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+             stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/>
+        </svg>
+        隐私优先
+      </div>
+      <h2>它不联网。一行网络代码都没有。</h2>
+      <p>
+        没有账号、没有统计、没有遥测、没有「匿名使用数据」。你复制的每一条内容
+        都只留在你自己的磁盘上，随时可查、可删、可彻底清除。
+      </p>
+      <code>~/Library/Application Support/pasteCat/</code>
+    </div>
+  </div>
+</section>
+
+<section id="install" class="alt">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>三步装好</h2>
+      <p>从下载到能用，通常不到一分钟。</p>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <div>
+          <h3>下载安装包</h3>
+          <p>从 Releases 页面下载最新的 <strong>pasteCat-v1.0.0.dmg</strong>。</p>
+          <p><a class="btn btn-primary" id="download-btn-2" href="#install" style="padding:9px 20px;font-size:14px;">前往下载</a></p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="num">2</div>
+        <div>
+          <h3>拖进「应用程序」</h3>
+          <p>双击打开 DMG，把 pasteCat 拖到旁边的 Applications 文件夹，然后推出磁盘映像。</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="num">3</div>
+        <div>
+          <h3>首次打开时放行一次</h3>
+          <p>
+            应用未经过 Apple 公证，首次打开系统会拦截。<strong>按住 Control 点按应用 → 选择「打开」</strong>，
+            或到「系统设置 → 隐私与安全性」页面底部点击「仍要打开」。
+          </p>
+          <p>若提示「已损坏」，在终端执行一次：</p>
+          <code>xattr -dr com.apple.quarantine /Applications/pasteCat.app</code>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="num">4</div>
+        <div>
+          <h3>授权辅助功能</h3>
+          <p>
+            第一次使用自动粘贴时会弹出引导。授权后，选中内容才会自动粘贴回原应用；
+            不授权也能用，只是需要自己按 ⌘V。
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <p class="note">
+      免费版剪贴板历史上限为 6 条。应用需要 macOS 13 (Ventura) 或更高版本。
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>pasteCat · 纯本地 macOS 剪贴板管理器</span>
+    <span>
+      <a data-repo-link="" href="#install">GitHub</a>
+      &nbsp;·&nbsp;
+      <a data-repo-link="/issues" href="#install">反馈问题</a>
+    </span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  // 自动识别部署环境：在 GitHub Pages 上把链接指向真实仓库；本地预览则提示替换
+  var host = location.hostname;
+  var parts = location.pathname.split('/').filter(Boolean);
+  var onPages = /\.github\.io$/i.test(host);
+  var base = null;
+
+  if (onPages && parts.length) {
+    base = 'https://github.com/' + host.replace(/\.github\.io$/i, '') + '/' + parts[0];
+  }
+
+  document.querySelectorAll('[data-repo-link]').forEach(function (el) {
+    if (base) {
+      el.href = base + (el.getAttribute('data-repo-link') || '');
+    }
+  });
+
+  var buttons = [document.getElementById('download-btn'), document.getElementById('download-btn-2')];
+  buttons.forEach(function (btn) {
+    if (!btn) return;
+    if (base) {
+      btn.href = base + '/releases/latest';
+    } else {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        alert('本地预览模式：部署到 GitHub Pages 后，此按钮会自动指向你的 Releases 页面。');
+      });
+    }
+  });
+
+  // 平滑滚动
+  document.querySelectorAll('a[href^="#"]').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      var id = a.getAttribute('href');
+      if (id.length < 2) return;
+      var t = document.querySelector(id);
+      if (!t) return;
+      e.preventDefault();
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,17 @@
+# 免费版源码（不随仓库公开）
+source/
+
+# 分发产物（通过 GitHub Releases 上传，不入 git）
+dist/
+
+# 本地测试脚本（仅本地使用）
+测试免费版.command
+
+# 构建产物
+.build/
+build/
+.swiftpm/
+*.xcodeproj
+
+# macOS
+.DS_Store
