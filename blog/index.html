@@ -204,8 +204,9 @@
 
   figure img {
     display: block;
-    width: 100%;
+    max-width: 100%;      /* 小图保持原始尺寸不放大，大图自适应缩到容器宽 */
     height: auto;
+    margin: 0 auto;
     border-radius: 12px;
     border: 1px solid var(--border);
     box-shadow: var(--shadow-m);
@@ -311,7 +312,10 @@
 
   <p>所以我给自己写了个小工具，叫 <strong>pasteCat</strong>。装上以后菜单栏多一只小猫，按 <code>⇧⌘V</code> 就能把最近复制过的内容捞回来。</p>
 
-  <!-- 配图位置 1：面板主界面（截图待补） -->
+  <figure>
+    <img src="../assets/pastecat-panel.png" alt="pasteCat 主面板" loading="lazy">
+    <figcaption>按 ⇧⌘V 唤出面板：顶部是搜索和视图切换，下面一排是分类筛选</figcaption>
+  </figure>
 
   <h3>最爽的一点：选中，就已经粘好了</h3>
 
@@ -319,7 +323,10 @@
 
   <p>pasteCat 省掉了最后那一步。在面板里点中哪一条，它就把你送回刚才那个窗口，顺便把内容贴好。整个过程你只做了一个动作：点。</p>
 
-  <!-- 配图位置 2：点选后自动粘贴回原应用（截图待补） -->
+  <figure>
+    <img src="../assets/pastecat-paste-back.gif" alt="选中后自动粘贴回原应用" loading="lazy">
+    <figcaption>点中一条，内容直接落回你刚才的输入位置——没有多余的按键动作</figcaption>
+  </figure>
 
   <p>它需要一次「辅助功能」权限授权——因为模拟按键在 macOS 眼里属于敏感操作。第一次用的时候它会自己弹窗引导，跟着点就行。不授权也能用，只是会退化成「我帮你复制好了，你自己按 ⌘V」。</p>
 
@@ -331,7 +338,7 @@
 
   <figure>
     <img src="../assets/pastecat-demo.gif"
-         alt="按住 ⌘ 多选三项参数，松开后合并粘贴进备忘录">
+         alt="按住 ⌘ 多选三项参数，松开后合并粘贴进备忘录" loading="lazy">
     <figcaption>按住 ⌘ 依次点选三条内容，松开 ⌘ 即合并粘贴——整个过程不到两秒</figcaption>
   </figure>
 
@@ -359,7 +366,10 @@
 
   <p>它还带一个「排除规则」，把密码管理器加进去，从那些应用里复制的东西就不会被记录。</p>
 
-  <!-- 配图位置 4：设置里的排除规则（截图待补） -->
+  <figure>
+    <img src="../assets/pastecat-exclusion.gif" alt="设置里的排除规则" loading="lazy">
+    <figcaption>把密码管理器加进排除列表，从这些应用里复制的内容不会被记录</figcaption>
+  </figure>
 
   <h3>装之前，有三件事你得先知道</h3>
 
@@ -393,7 +403,10 @@
 
   <p>pasteCat 的差异点就一个：<strong>能把多条内容合并成一段一次粘贴</strong>。这是我从头到尾最想要的功能，也是我动手写它的唯一理由。其他的都是顺带做的。</p>
 
-  <!-- 配图位置 5：三种视图切换（截图待补） -->
+  <figure>
+    <img src="../assets/pastecat-views.gif" alt="三种视图切换" loading="lazy">
+    <figcaption>同一个面板，卡片 / 紧凑 / 列表三种视图随意切换</figcaption>
+  </figure>
 
   <h3>来试试</h3>
 
